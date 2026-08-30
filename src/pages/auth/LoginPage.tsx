@@ -46,7 +46,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [_loading, _setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -451,12 +451,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   type="submit"
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all mt-2"
+                  disabled={loading}
+                  className={`w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all mt-2 ${loading ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   <span>
-                    {activeTab === 'signin'
-                      ? `Sign In to ${selectedRole.toUpperCase()} Portal`
-                      : `Register ${selectedRole.toUpperCase()} Account`}
+                    {loading
+                      ? 'Please wait...'
+                      : activeTab === 'signin'
+                        ? `Sign In to ${selectedRole.toUpperCase()} Portal`
+                        : `Register ${selectedRole.toUpperCase()} Account`}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </motion.button>
