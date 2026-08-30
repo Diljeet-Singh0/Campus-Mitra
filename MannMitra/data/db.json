@@ -1,0 +1,185 @@
+{
+  "users": [
+    {
+      "id": "usr-student-1",
+      "name": "Aarohi Verma",
+      "email": "aarohi@campus.edu",
+      "password": "student123",
+      "role": "student",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      "title": "Student",
+      "department": "Computer Science & Engineering",
+      "studentId": "CS2023-042"
+    },
+    {
+      "id": "usr-counselor-1",
+      "name": "Dr. Ananya Sharma",
+      "email": "ananya@campus.edu",
+      "password": "counselor123",
+      "role": "counselor",
+      "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150",
+      "title": "Senior Clinical Psychologist",
+      "department": "University Student Health Center"
+    },
+    {
+      "id": "usr-admin-1",
+      "name": "Dean Mehta",
+      "email": "dean.mehta@campus.edu",
+      "password": "admin123",
+      "role": "admin",
+      "avatar": "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150",
+      "title": "Dean of Student Welfare",
+      "department": "Executive Administration"
+    }
+  ],
+  "students": [
+    {
+      "id": "std-1",
+      "name": "Aarohi Verma",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      "department": "Computer Science & Engineering",
+      "year": "3rd Year (B.Tech)",
+      "studentId": "CS2023-042",
+      "priorityScore": 8.4,
+      "priorityLevel": "urgent",
+      "moodTrend": "declining",
+      "stressScore": 8,
+      "sleepHours": 4.5,
+      "academicEngagement": "reduced",
+      "attendanceRate": 71,
+      "lastActivity": "12 mins ago",
+      "counselorAssigned": "Dr. Ananya Sharma",
+      "primarySignals": [
+        "Attendance decline (-19%)",
+        "Sleep duration < 5h",
+        "Academic engagement drop",
+        "Negative check-in sentiment"
+      ],
+      "summaryNote": "Consecutive low mood check-ins over 14 days with marked decline in lab attendance."
+    },
+    {
+      "id": "std-2",
+      "name": "Rohan Mehta",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+      "department": "Mechanical Engineering",
+      "year": "2nd Year (B.Tech)",
+      "studentId": "ME2024-118",
+      "priorityScore": 6.8,
+      "priorityLevel": "moderate",
+      "moodTrend": "declining",
+      "stressScore": 7,
+      "sleepHours": 5.5,
+      "academicEngagement": "reduced",
+      "attendanceRate": 79,
+      "lastActivity": "2 hours ago",
+      "counselorAssigned": "Dr. Ananya Sharma",
+      "primarySignals": [
+        "Midterm exam stress",
+        "Classroom participation drop",
+        "Moderate sleep deficit"
+      ],
+      "summaryNote": "Showing signs of elevated academic stress leading up to semester assessments."
+    },
+    {
+      "id": "std-3",
+      "name": "Priya Sundaram",
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
+      "department": "Business Management",
+      "year": "1st Year (MBA)",
+      "studentId": "MBA2025-009",
+      "priorityScore": 3.2,
+      "priorityLevel": "stable",
+      "moodTrend": "improving",
+      "stressScore": 4,
+      "sleepHours": 7.2,
+      "academicEngagement": "high",
+      "attendanceRate": 94,
+      "lastActivity": "Yesterday",
+      "counselorAssigned": "Dr. Rajesh Gupta",
+      "primarySignals": [
+        "Consistent check-ins",
+        "High peer engagement",
+        "Healthy sleep routine"
+      ],
+      "summaryNote": "Well-adjusted with active participation in campus activities."
+    },
+    {
+      "id": "std-4",
+      "name": "Kabir Das",
+      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+      "department": "Electronics & Communication",
+      "year": "4th Year (B.Tech)",
+      "studentId": "EC2022-089",
+      "priorityScore": 7.6,
+      "priorityLevel": "urgent",
+      "moodTrend": "declining",
+      "stressScore": 9,
+      "sleepHours": 4.0,
+      "academicEngagement": "low",
+      "attendanceRate": 64,
+      "lastActivity": "3 hours ago",
+      "counselorAssigned": "Dr. Ananya Sharma",
+      "primarySignals": [
+        "Placement season anxiety",
+        "Severe sleep restriction",
+        "Project deadline backlog"
+      ],
+      "summaryNote": "High placement stress combined with project submission pressures."
+    }
+  ],
+  "checkins": [
+    {
+      "id": "chk-1",
+      "studentId": "CS2023-042",
+      "studentName": "Aarohi Verma",
+      "mood": "Overwhelmed",
+      "stress": 8,
+      "sleep": 4.5,
+      "notes": "Late night studying for Data Structures lab report.",
+      "timestamp": "2026-08-30 09:30 AM"
+    }
+  ],
+  "interventions": [
+    {
+      "id": "int-1",
+      "studentId": "std-2",
+      "type": "academic_support",
+      "date": "2026-08-27",
+      "notes": "Scheduled academic peer tutoring session for Thermodynamics and provided exam stress reduction techniques.",
+      "followUpDate": "2026-09-03",
+      "outcome": "improving",
+      "scheduledBy": "Dr. Ananya Sharma"
+    }
+  ],
+  "faculty_requests": [
+    {
+      "id": "req-101",
+      "studentId": "std-1",
+      "studentName": "Aarohi Verma",
+      "department": "Computer Science & Engineering",
+      "course": "CS301: Algorithms & Data Structures",
+      "facultyName": "Prof. Ramesh Verma",
+      "facultyId": "fac-1",
+      "counselorName": "Dr. Ananya Sharma",
+      "requestedDate": "2026-08-26",
+      "status": "pending",
+      "dueDate": "2026-08-29",
+      "guidanceNote": "Please observe classroom participation, group lab interaction, and overall attentiveness."
+    }
+  ],
+  "faculty_observations": [
+    {
+      "id": "obs-201",
+      "requestId": "req-102",
+      "studentId": "std-2",
+      "facultyName": "Prof. Ramesh Verma",
+      "course": "ME204: Thermodynamics",
+      "changeDetected": "slight",
+      "participation": "reduced",
+      "academicEngagement": "reduced",
+      "peerInteraction": "normal",
+      "contextualNotes": "Rohan missed two tutorial discussions and appeared distracted during the last session.",
+      "submittedAt": "2026-08-27 11:30 AM"
+    }
+  ]
+}
