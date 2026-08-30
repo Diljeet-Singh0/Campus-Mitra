@@ -307,7 +307,7 @@ export function useDemoStore() {
           mood: data.mood,
           stress: data.stress,
           sleep: data.sleepHours,
-          notes: data.notes
+          notes: data.reflection || ''
         })
       });
       if (res.ok) {

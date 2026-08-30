@@ -22,10 +22,18 @@ Listener: http://localhost:5000
 from __future__ import annotations
 
 import os
+import sys
 import json
 import logging
 import re
 from typing import List, Dict, Any, Optional
+
+# Ensure MannMitra directory is on sys.path so imports work
+# both locally (python api.py) and via gunicorn from root (gunicorn MannMitra.api:app)
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
