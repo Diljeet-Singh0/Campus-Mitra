@@ -125,6 +125,14 @@ export interface ChatMessage {
   isCrisis?: boolean;
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+}
+
 export interface DepartmentMetric {
   department: string;
   studentCount: number;

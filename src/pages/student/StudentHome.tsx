@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Student } from '../../types';
 import { MetricCard } from '../../components/common/MetricCard';
 import { SafetyDisclaimer } from '../../components/common/SafetyDisclaimer';
 import { Sparkles, CalendarCheck, HeartHandshake, TrendingUp, Moon, Activity, ArrowRight, PhoneCall } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+
+const MANNMITRA_API = import.meta.env.VITE_MANNMITRA_API || 'http://localhost:5000';
 
 interface StudentHomeProps {
   student: Student;
@@ -12,6 +15,46 @@ interface StudentHomeProps {
 
 export const StudentHome: React.FC<StudentHomeProps> = ({ student }) => {
   const navigate = useNavigate();
+  const [hasLoggedData, setHasLoggedData] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkCheckinHistory = async () => {
+      const targetId = student.studentId || student.id;
+      let count = 0;
+
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('checkins')
+            .select('id')
+            .or(`student_id.eq.${targetId},student_name.ilike.%${student.name}%`);
+          if (!error && data && data.length > 0) {
+            count = data.length;
+          }
+        } catch (e) {
+          console.warn('Supabase checkin count check error:', e);
+        }
+      }
+
+      if (count === 0) {
+        try {
+          const res = await fetch(`${MANNMITRA_API}/api/checkins/${encodeURIComponent(targetId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.checkins && data.checkins.length > 0) {
+              count = data.checkins.length;
+            }
+          }
+        } catch (err) {
+          console.warn('Backend checkin count check error:', err);
+        }
+      }
+
+      setHasLoggedData(count > 0);
+    };
+
+    checkCheckinHistory();
+  }, [student]);
 
   return (
     <motion.div
@@ -121,33 +164,49 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ student }) => {
 
       <SafetyDisclaimer role="student" />
 
+      {/* Display real check-in metrics or clear 'Not logged yet' indicator for new accounts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Mood Trajectory"
-          value={student.moodTrend ? student.moodTrend.charAt(0).toUpperCase() + student.moodTrend.slice(1) : "Stable"}
-          subtitle="7-day check-in habit"
+          value={
+            hasLoggedData
+              ? student.moodTrend ? student.moodTrend.charAt(0).toUpperCase() + student.moodTrend.slice(1) : "Stable"
+              : "No Logs Yet"
+          }
+          subtitle={hasLoggedData ? "7-day check-in habit" : "Log check-in to track"}
           icon={Activity}
           iconColor="text-emerald-700 dark:text-emerald-400"
         />
         <MetricCard
           title="Stress Level"
-          value={`${student.stressScore} / 10`}
-          change={student.stressScore > 6 ? 12 : -8}
-          changeLabel="Vs last week"
+          value={
+            hasLoggedData
+              ? `${student.stressScore} / 10`
+              : "-- / 10"
+          }
+          subtitle={hasLoggedData ? "Vs last week" : "Not logged yet"}
           icon={TrendingUp}
-          iconColor={student.stressScore >= 7 ? "text-rose-700 dark:text-rose-400" : "text-amber-700 dark:text-amber-400"}
+          iconColor={hasLoggedData && student.stressScore && student.stressScore >= 7 ? "text-rose-700 dark:text-rose-400" : "text-amber-700 dark:text-amber-400"}
         />
         <MetricCard
           title="Avg Nightly Sleep"
-          value={`${student.sleepHours} Hours`}
-          subtitle="Target: 7.5 hrs"
+          value={
+            hasLoggedData
+              ? `${student.sleepHours} Hours`
+              : "-- Hours"
+          }
+          subtitle={hasLoggedData ? "Target: 7.5 hrs" : "Not logged yet"}
           icon={Moon}
-          iconColor={student.sleepHours < 6 ? "text-rose-700 dark:text-rose-400" : "text-teal-700 dark:text-teal-400"}
+          iconColor={hasLoggedData && student.sleepHours && student.sleepHours < 6 ? "text-rose-700 dark:text-rose-400" : "text-teal-700 dark:text-teal-400"}
         />
         <MetricCard
           title="Academic Drive"
-          value={student.academicEngagement ? student.academicEngagement.charAt(0).toUpperCase() + student.academicEngagement.slice(1) : "Normal"}
-          subtitle={`Attendance ${student.attendanceRate}%`}
+          value={
+            hasLoggedData
+              ? student.academicEngagement ? student.academicEngagement.charAt(0).toUpperCase() + student.academicEngagement.slice(1) : "Normal"
+              : "Pending Data"
+          }
+          subtitle={hasLoggedData ? `Attendance ${student.attendanceRate}%` : "Complete daily check-in"}
           icon={HeartHandshake}
           iconColor="text-amber-700 dark:text-amber-400"
         />

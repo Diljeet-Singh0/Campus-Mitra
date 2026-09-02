@@ -283,6 +283,19 @@ class LocalDB:
 db = LocalDB()
 
 # ---------------------------------------------------------------------------
+# Supabase Cloud Database Client Integration
+# ---------------------------------------------------------------------------
+_supabase_client = None
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or os.getenv("SUPABASE_URL") or os.environ.get("VITE_SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY") or os.environ.get("VITE_SUPABASE_ANON_KEY")
+
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        from supabase import create_client
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("Connected to Supabase Cloud Database (%s)", SUPABASE_URL)
+    except Exception as exc:
+        logger.warning("Supabase client initialization skipped: %s", exc)
 # AI Client Setup (Google Gemini API)
 # ---------------------------------------------------------------------------
 _GENAI_AVAILABLE = False
@@ -317,15 +330,13 @@ def init_genai():
 init_genai()
 
 SYSTEM_PROMPT = (
-    "You are MannMitra, an intelligent, warm, and deeply empathetic AI peer companion for Indian university students. "
-    "You communicate like a real, thoughtful friend and supportive listener—conversational, natural, engaging, and clear, "
-    "similar to how ChatGPT or a compassionate counselor assistant speaks. "
-    "You never diagnose or act as a licensed medical authority, but you provide genuine emotional validation, practical "
-    "coping advice, and actionable guidance for academic stress, sleep difficulties, peer anxiety, or emotional fatigue. "
-    "Always maintain context from previous turns in the conversation. Keep your tone encouraging, human, and comforting, "
-    "without sounding like a canned automated script or a rigid textbook. "
-    "If campus resources or coping techniques (like 4-7-8 breathing, 5-4-3-2-1 grounding, or Pomodoro blocks) are relevant, "
-    "weave them naturally into your response."
+    "You are MannMitra, a warm, supportive, and friendly AI peer companion for Indian university students. "
+    "You communicate like a real, caring friend—conversational, natural, warm, and concise. "
+    "ABSOLUTE RULES YOU MUST FOLLOW:\n"
+    "1. Keep responses to 2-3 complete sentences. Always finish your thought completely—NEVER cut off mid-sentence. Never write bullet lists or essays.\n"
+    "2. If [Internal Knowledge Context] is provided, naturally weave specific techniques from it into your reply. But NEVER say 'mentioned above', 'as described', reference document titles, or reveal that you have background context. Speak as if you already know these things.\n"
+    "3. If a question is physically impossible or nonsensical, gently acknowledge the feeling behind it and redirect with a practical suggestion instead of answering literally.\n"
+    "4. Do not output internal thinking processes, reasoning chains, or <think> blocks. Provide ONLY your direct, warm response."
 )
 
 logger.info("Loading RiskAnalyzer...")
@@ -338,35 +349,105 @@ rag_engine = RAGEngine()
 # Smart Reply Synthesizer with Multi-Model Gemini LLM Fallbacks
 # ---------------------------------------------------------------------------
 def generate_reply(user_text: str, chat_history: List[dict], rag_context: RAGContext) -> str:
-    init_genai()
-    
-    if _GENAI_AVAILABLE:
-        context_note = ""
-        if rag_context.is_used and rag_context.retrieved_documents:
-            joined = "\n\n".join(rag_context.retrieved_documents[:2])
-            context_note = (
-                "\n\n[Retrieved Campus Knowledge & Coping Guide Context]:\n"
-                f"{joined}\n"
-                "(Weave these strategies smoothly into your reply as friendly suggestions where appropriate.)"
-            )
-
-        convo_lines = []
-        for turn in chat_history[-6:]:
-            role = "Student" if turn.get("role") == "user" else "MannMitra"
-            convo_lines.append(f"{role}: {turn.get('content', '')}")
-        convo_text = "\n".join(convo_lines)
-
-        full_prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"Conversation History:\n{convo_text}\n\n"
-            f"Student: {user_text}"
-            f"{context_note}\n\n"
-            "MannMitra:"
+    context_note = ""
+    if rag_context.is_used and rag_context.retrieved_documents:
+        joined = "\n\n".join(rag_context.retrieved_documents[:2])
+        context_note = (
+            "\n\n[Internal Knowledge Context — the student CANNOT see this, only you can]:\n"
+            f"{joined}\n"
+            "INSTRUCTION: Naturally use at least one specific technique or fact from this context in your reply. "
+            "NEVER say 'mentioned above', 'as listed', or reference document titles/headings. "
+            "Speak as if you personally know these techniques. Keep it to 2-3 warm, natural sentences."
         )
 
-        # 1. Try modern google-genai SDK across model fallbacks
+    convo_lines = []
+    for turn in chat_history[-6:]:
+        role = "Student" if turn.get("role") == "user" else "MannMitra"
+        convo_lines.append(f"{role}: {turn.get('content', '')}")
+    convo_text = "\n".join(convo_lines)
+
+    full_prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"Conversation History:\n{convo_text}\n\n"
+        f"Student: {user_text}"
+        f"{context_note}\n\n"
+        "MannMitra:"
+    )
+
+    # -----------------------------------------------------------------------
+    # 1. Primary LLM Provider: Groq API (if GROQ_API_KEY present)
+    # -----------------------------------------------------------------------
+    groq_key = os.environ.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
+    if groq_key:
+        import requests
+        # Dynamically fetch available models, then filter with a strict allowlist
+        # of known-good chat model families (Groq's free tier changes frequently)
+        CHAT_ALLOWLIST = ["qwen", "gpt-oss", "llama-3", "gemma", "mistral"]
+        CHAT_BLOCKLIST = ["safeguard", "guard", "whisper", "orpheus", "allam",
+                          "embed", "deepseek", "r1", "compound", "arabic", "audio"]
+        groq_models = []
+        try:
+            m_resp = requests.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {groq_key}"},
+                timeout=5
+            )
+            if m_resp.status_code == 200:
+                raw_models = [m.get("id") for m in m_resp.json().get("data", []) if m.get("id")]
+                for m in raw_models:
+                    ml = m.lower()
+                    # Must match at least one allowlist pattern AND no blocklist pattern
+                    if (any(a in ml for a in CHAT_ALLOWLIST) and
+                            not any(b in ml for b in CHAT_BLOCKLIST)):
+                        groq_models.append(m)
+                logger.info("Filtered %d chat models from %d total Groq models: %s",
+                            len(groq_models), len(raw_models), groq_models)
+        except Exception as exc:
+            logger.debug("Could not fetch Groq model list: %s", exc)
+
+        if not groq_models:
+            groq_models = ["qwen/qwen3.6-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+            logger.info("Using hardcoded fallback Groq models: %s", groq_models)
+
+        for gm in groq_models:
+            try:
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": gm,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": f"Conversation History:\n{convo_text}\n\nStudent: {user_text}{context_note}\n\nREMINDER: Reply in 2-3 complete sentences. Always finish your thought completely."}
+                        ],
+                        "temperature": 0.7,
+                        "max_tokens": 400
+                    },
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    ans = resp.json()["choices"][0]["message"]["content"] or ""
+                    # 1. Strip complete <think>...</think> or <thibk>...</thibk> or <thought>...</thought> blocks
+                    ans = re.sub(r'<(think|thibk|thought)>.*?</\1>', '', ans, flags=re.DOTALL | re.IGNORECASE).strip()
+                    # 2. Strip unclosed <think>... or <thibk>... blocks if truncated mid-thought
+                    ans = re.sub(r'<(think|thibk|thought)>.*', '', ans, flags=re.DOTALL | re.IGNORECASE).strip()
+                    
+                    if ans:
+                        logger.info("Successfully generated clean short LLM response using Groq (%s)", gm)
+                        return ans
+                else:
+                    logger.warning("Groq model %s HTTP %d: %s", gm, resp.status_code, resp.text[:100])
+            except Exception as e:
+                logger.debug("Groq model %s exception: %s", gm, e)
+
+    # -----------------------------------------------------------------------
+    # 2. Secondary LLM Provider: Google Gemini API
+    # -----------------------------------------------------------------------
+    init_genai()
+    if _GENAI_AVAILABLE:
+        # Try modern google-genai SDK across model fallbacks
         if _genai_client is not None:
-            models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"]
+            models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
             for model_name in models_to_try:
                 try:
                     response = _genai_client.models.generate_content(
@@ -375,47 +456,52 @@ def generate_reply(user_text: str, chat_history: List[dict], rag_context: RAGCon
                     )
                     text = (response.text or "").strip()
                     if text:
-                        logger.info("Generated LLM response using model: %s", model_name)
+                        logger.info("Generated LLM response using Gemini model: %s", model_name)
                         return text
                 except Exception as exc:
+                    exc_str = str(exc)
+                    if "401" in exc_str or "UNAUTHENTICATED" in exc_str:
+                        logger.warning("Gemini API Key rejected (401 Unauthorized).")
+                        break
                     logger.debug("GenAI model %s failed: %s", model_name, exc)
 
-        # 2. Try legacy google.generativeai SDK
-        if _genai_legacy is not None:
-            models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        # Try legacy google.generativeai SDK
+        if _genai_legacy is not None and not (os.environ.get("GEMINI_API_KEY", "").startswith("AQ.")):
+            models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
             for model_name in models_to_try:
                 try:
                     model = _genai_legacy.GenerativeModel(model_name)
                     response = model.generate_content(full_prompt)
                     text = (response.text or "").strip()
                     if text:
-                        logger.info("Generated Legacy LLM response using model: %s", model_name)
+                        logger.info("Generated Legacy LLM response using Gemini model: %s", model_name)
                         return text
                 except Exception as exc:
                     logger.debug("Legacy GenAI model %s failed: %s", model_name, exc)
 
-        # 3. Direct HTTP REST API Fallback
+        # Direct HTTP REST API Fallback
         key = os.environ.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
-        if key:
+        if key and not key.startswith("AQ."):
             try:
                 import requests
-                rest_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-flash-latest", "gemini-pro"]
+                headers = {"Content-Type": "application/json"}
+                rest_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
                 for rm in rest_models:
-                    for ver in ["v1beta", "v1"]:
-                        url = f"https://generativelanguage.googleapis.com/{ver}/models/{rm}:generateContent?key={key}"
-                        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-                        resp = requests.post(url, json=payload, timeout=10)
-                        if resp.status_code == 200:
-                            res_json = resp.json()
-                            candidates = res_json.get("candidates", [])
-                            if candidates:
-                                parts = candidates[0].get("content", {}).get("parts", [])
-                                if parts and "text" in parts[0]:
-                                    logger.info("Generated LLM response via direct REST API model: %s (%s)", rm, ver)
-                                    return parts[0]["text"].strip()
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{rm}:generateContent?key={key}"
+                    payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+                    resp = requests.post(url, json=payload, headers=headers, timeout=5)
+                    if resp.status_code == 200:
+                        res_json = resp.json()
+                        candidates = res_json.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                logger.info("Generated LLM response via direct REST API model: %s", rm)
+                                return parts[0]["text"].strip()
             except Exception as e:
                 logger.debug("Direct REST API call exception: %s", e)
 
+    logger.info("Using smart intent fallback response for message.")
     # --- Smart Fallback Generator matching User Intent ---
     lowered = user_text.lower()
     
@@ -528,6 +614,28 @@ def chat():
         rag_context = rag_engine.retrieve(user_text, assessment.score)
         reply = generate_reply(user_text, history, rag_context)
 
+    if _supabase_client:
+        try:
+            _supabase_client.table("chat_messages").insert([
+                {
+                    "session_id": session_id,
+                    "sender": "user",
+                    "text": user_text
+                },
+                {
+                    "session_id": session_id,
+                    "sender": "mannmitra",
+                    "text": reply,
+                    "tier": assessment.tier,
+                    "emotion": emotion.label,
+                    "rag_used": rag_context.is_used,
+                    "is_crisis": assessment.is_crisis
+                }
+            ]).execute()
+            logger.info("Recorded chat message turn to Supabase table 'chat_messages' for session %s", session_id)
+        except Exception as exc:
+            logger.debug("Failed to record chat history to Supabase: %s", exc)
+
     return jsonify({
         "reply": reply,
         "tier": assessment.tier,
@@ -537,6 +645,22 @@ def chat():
         "rag_used": rag_context.is_used,
         "rag_sources": rag_context.sources,
     })
+
+
+@app.route("/api/chat/history", methods=["GET"])
+def get_chat_history():
+    session_id = request.args.get("session_id") or "default"
+    if _supabase_client:
+        try:
+            res = _supabase_client.table("chat_messages")\
+                .select("*")\
+                .eq("session_id", session_id)\
+                .order("id", desc=False)\
+                .execute()
+            return jsonify({"success": True, "messages": res.data or []})
+        except Exception as exc:
+            logger.warning("Could not fetch chat history from Supabase: %s", exc)
+    return jsonify({"success": False, "messages": []})
 
 
 # ---------------------------------------------------------------------------

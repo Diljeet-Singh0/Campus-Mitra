@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { Sparkles, Moon, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Student } from '../../types';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 const MANNMITRA_API = import.meta.env.VITE_MANNMITRA_API || 'http://localhost:5000';
 
@@ -12,51 +13,63 @@ interface StudentTrendsPageProps {
 
 export const StudentTrendsPage: React.FC<StudentTrendsPageProps> = ({ student }) => {
   const [trendData, setTrendData] = useState<any[]>([]);
+  const [hasRealData, setHasRealData] = useState(false);
 
   useEffect(() => {
     const fetchCheckins = async () => {
       const targetId = student.studentId || student.id;
       let checkins: any[] = [];
-      try {
-        const res = await fetch(`${MANNMITRA_API}/api/checkins/${encodeURIComponent(targetId)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.checkins && data.checkins.length > 0) {
-            checkins = data.checkins;
+
+      // Try fetching checkins from Supabase directly first
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('checkins')
+            .select('*')
+            .or(`student_id.eq.${targetId},student_name.ilike.%${student.name}%`)
+            .order('created_at', { ascending: false })
+            .limit(14);
+
+          if (!error && data && data.length > 0) {
+            checkins = data;
           }
+        } catch (e) {
+          console.warn('Supabase checkins fetch notice:', e);
         }
-      } catch (err) {
-        console.warn('Could not fetch student checkins for trends:', err);
+      }
+
+      if (checkins.length === 0) {
+        try {
+          const res = await fetch(`${MANNMITRA_API}/api/checkins/${encodeURIComponent(targetId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.checkins && data.checkins.length > 0) {
+              checkins = data.checkins;
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch student checkins for trends:', err);
+        }
       }
 
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       if (checkins.length > 0) {
+        setHasRealData(true);
         // Map real checkins into 7-day trend format
         const formatted = checkins.slice(0, 7).reverse().map((chk, i) => {
-          const moodVal = chk.mood === 'Great' ? 9 : chk.mood === 'Good' ? 8 : chk.mood === 'Okay' ? 6 : chk.mood === 'Low' ? 4 : 2;
+          const moodVal = chk.mood === 'Great' || chk.mood === 'great' ? 9 : chk.mood === 'Good' || chk.mood === 'good' ? 8 : chk.mood === 'Okay' || chk.mood === 'okay' ? 6 : chk.mood === 'Low' || chk.mood === 'low' ? 4 : 2;
           return {
-            day: chk.timestamp ? chk.timestamp.split(' ')[0] : days[i % 7],
+            day: chk.created_at ? new Date(chk.created_at).toLocaleDateString([], { weekday: 'short' }) : (chk.timestamp ? chk.timestamp.split(' ')[0] : days[i % 7]),
             moodScore: moodVal,
-            stress: chk.stress,
-            sleep: chk.sleep,
-            energy: Math.max(2, 10 - chk.stress)
+            stress: Number(chk.stress),
+            sleep: Number(chk.sleep),
+            energy: Math.max(2, 10 - Number(chk.stress))
           };
         });
         setTrendData(formatted);
       } else {
-        // Generate personalized baseline graph based on student's live stress/sleep scores
-        const baseStress = student.stressScore || 5;
-        const baseSleep = student.sleepHours || 7;
-        const generated = [
-          { day: 'Mon', moodScore: Math.min(10, Math.max(2, 11 - baseStress)), stress: Math.max(2, baseStress - 1), sleep: Math.min(9, baseSleep + 0.5), energy: 7 },
-          { day: 'Tue', moodScore: Math.min(10, Math.max(2, 10 - baseStress)), stress: baseStress, sleep: baseSleep, energy: 6 },
-          { day: 'Wed', moodScore: Math.min(10, Math.max(2, 9 - baseStress)), stress: Math.min(10, baseStress + 1), sleep: Math.max(4, baseSleep - 1), energy: 5 },
-          { day: 'Thu', moodScore: Math.min(10, Math.max(2, 8 - baseStress)), stress: Math.min(10, baseStress + 1.5), sleep: Math.max(4, baseSleep - 1.2), energy: 4 },
-          { day: 'Fri', moodScore: Math.min(10, Math.max(2, 9 - baseStress)), stress: baseStress, sleep: baseSleep, energy: 6 },
-          { day: 'Sat', moodScore: Math.min(10, Math.max(2, 10 - baseStress)), stress: Math.max(2, baseStress - 1.5), sleep: Math.min(9, baseSleep + 0.8), energy: 7 },
-          { day: 'Sun', moodScore: Math.min(10, Math.max(2, 11 - baseStress)), stress: Math.max(2, baseStress - 2), sleep: Math.min(9.5, baseSleep + 1), energy: 8 }
-        ];
-        setTrendData(generated);
+        setHasRealData(false);
+        setTrendData([]);
       }
     };
 
@@ -101,54 +114,82 @@ export const StudentTrendsPage: React.FC<StudentTrendsPageProps> = ({ student })
         <div className="space-y-1 text-xs text-slate-800 dark:text-slate-200">
           <h4 className="font-extrabold text-slate-900 dark:text-slate-100">Live Personal Insights</h4>
           <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-            Current Stress: <strong className="text-amber-700 dark:text-amber-300">{student.stressScore}/10</strong> • Sleep: <strong className="text-teal-700 dark:text-teal-300">{student.sleepHours} hrs</strong> • Mood Trajectory: <strong className="text-emerald-700 dark:text-emerald-300 font-capitalize">{student.moodTrend}</strong>.
+            {hasRealData ? (
+              <>
+                Current Stress: <strong className="text-amber-700 dark:text-amber-300">{student.stressScore}/10</strong> • Sleep: <strong className="text-teal-700 dark:text-teal-300">{student.sleepHours} hrs</strong> • Mood Trajectory: <strong className="text-emerald-700 dark:text-emerald-300 font-capitalize">{student.moodTrend}</strong>.
+              </>
+            ) : (
+              <>
+                No check-ins logged for this account yet. Complete your first daily check-in to generate personal wellbeing trends!
+              </>
+            )}
           </p>
         </div>
       </div>
 
-      <div id="student-trends-cards" className="grid grid-cols-1 lg:grid-cols-2 gap-6 scroll-mt-20">
-        <div className="glass-panel p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-teal-700 dark:text-teal-400" /> Mood & Energy Score (1-10)
-            </h3>
-            <span className="text-xs text-slate-600 dark:text-slate-400 font-mono font-bold">Past 7 Days</span>
+      {!hasRealData ? (
+        <div className="glass-panel p-8 rounded-3xl border border-slate-200 dark:border-slate-800 text-center space-y-4 shadow-xl my-4">
+          <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl">
+            📊
           </div>
-          <div className="h-60 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
-                <XAxis dataKey="day" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={11} domain={[1, 10]} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px', color: '#f8fafc' }} />
-                <Line type="monotone" dataKey="moodScore" name="Mood" stroke="#0d9488" strokeWidth={3} dot={{ r: 4 }} />
-                <Line type="monotone" dataKey="energy" name="Energy" stroke="#10b981" strokeWidth={2} strokeDasharray="3 3" />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="space-y-1 max-w-md mx-auto">
+            <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100">No Check-in Data Recorded Yet</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
+              Log your daily check-in to start building your personal mood trajectory, stress score history, and sleep performance curves.
+            </p>
           </div>
+          <button
+            onClick={() => window.location.assign('/student/checkin')}
+            className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30 transition-all inline-flex items-center gap-2"
+          >
+            Submit First Daily Check-in
+          </button>
         </div>
+      ) : (
+        <div id="student-trends-cards" className="grid grid-cols-1 lg:grid-cols-2 gap-6 scroll-mt-20">
+          <div className="glass-panel p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-teal-700 dark:text-teal-400" /> Mood & Energy Score (1-10)
+              </h3>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-mono font-bold">Past 7 Days</span>
+            </div>
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
+                  <XAxis dataKey="day" stroke="#64748b" fontSize={11} />
+                  <YAxis stroke="#64748b" fontSize={11} domain={[1, 10]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px', color: '#f8fafc' }} />
+                  <Line type="monotone" dataKey="moodScore" name="Mood" stroke="#0d9488" strokeWidth={3} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="energy" name="Energy" stroke="#10b981" strokeWidth={2} strokeDasharray="3 3" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-        <div className="glass-panel p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Moon className="w-4 h-4 text-emerald-700 dark:text-emerald-400" /> Stress Rating vs Sleep Hours
-            </h3>
-            <span className="text-xs text-slate-600 dark:text-slate-400 font-mono font-bold">Past 7 Days</span>
-          </div>
-          <div className="h-60 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
-                <XAxis dataKey="day" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={11} domain={[2, 10]} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px', color: '#f8fafc' }} />
-                <Line type="monotone" dataKey="stress" name="Stress (1-10)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 4 }} />
-                <Line type="monotone" dataKey="sleep" name="Sleep (Hours)" stroke="#2dd4bf" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="glass-panel p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Moon className="w-4 h-4 text-emerald-700 dark:text-emerald-400" /> Stress Rating vs Sleep Hours
+              </h3>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-mono font-bold">Past 7 Days</span>
+            </div>
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
+                  <XAxis dataKey="day" stroke="#64748b" fontSize={11} />
+                  <YAxis stroke="#64748b" fontSize={11} domain={[2, 10]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px', color: '#f8fafc' }} />
+                  <Line type="monotone" dataKey="stress" name="Stress (1-10)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="sleep" name="Sleep (Hours)" stroke="#2dd4bf" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </motion.div>
   );
 };

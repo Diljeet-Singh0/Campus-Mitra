@@ -17,6 +17,7 @@ import {
   INITIAL_TIMELINE_EVENTS,
   INITIAL_INTERVENTIONS
 } from '../mock/initialData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface RegisteredUser extends UserProfile {
   password?: string;
@@ -117,17 +118,142 @@ export function useDemoStore() {
   const [interventions, setInterventions] = useState<Record<string, InterventionRecord[]>>(INITIAL_INTERVENTIONS);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 'msg-1',
-      sender: 'mannmitra',
-      text: `Namaste ${currentUser?.name ? currentUser.name.split(' ')[0] : 'Friend'}! I'm MannMitra, your campus companion. How are you feeling today? Remember, this is a safe, private space to express whatever is on your mind.`,
-      timestamp: '10:00 AM',
-      suggestions: ["I'm feeling overwhelmed with exams", "I can't focus on studies", "I've been sleeping poorly", "Just want to talk"]
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
+    const saved = localStorage.getItem('campus_pulse_chat_sessions');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.warn('Saved chat sessions parse error', e); }
     }
-  ]);
+    return [{
+      id: 'session-default',
+      title: 'Initial Welcoming Chat',
+      createdAt: new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      messages: [
+        {
+          id: 'msg-1',
+          sender: 'mannmitra',
+          text: `Namaste! I'm MannMitra, your campus companion. How are you feeling today? Remember, this is a safe, private space to express whatever is on your mind.`,
+          timestamp: '10:00 AM',
+          suggestions: ["I'm feeling overwhelmed with exams", "I can't focus on studies", "I've been sleeping poorly", "Just want to talk"]
+        }
+      ]
+    }];
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    return localStorage.getItem('campus_pulse_active_session') || 'session-default';
+  });
+
+  const userStorageKey = currentUser ? `campus_pulse_chat_sessions_${currentUser.id}` : 'campus_pulse_chat_sessions_guest';
+
+  // Load user-specific chat sessions whenever logged-in user changes
+  useEffect(() => {
+    const saved = localStorage.getItem(userStorageKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatSessions(parsed);
+          setActiveSessionId(parsed[0].id);
+          return;
+        }
+      } catch (e) {
+        console.warn('Error loading user chat sessions:', e);
+      }
+    }
+    const defaultSess: ChatSession = {
+      id: `session-${Date.now()}`,
+      title: 'Initial Welcoming Chat',
+      createdAt: new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      messages: [
+        {
+          id: 'msg-1',
+          sender: 'mannmitra',
+          text: `Namaste ${currentUser?.name ? currentUser.name.split(' ')[0] : 'Friend'}! I'm MannMitra, your campus companion. How are you feeling today? Remember, this is a safe, private space to express whatever is on your mind.`,
+          timestamp: '10:00 AM',
+          suggestions: ["I'm feeling overwhelmed with exams", "I can't focus on studies", "I've been sleeping poorly", "Just want to talk"]
+        }
+      ]
+    };
+    setChatSessions([defaultSess]);
+    setActiveSessionId(defaultSess.id);
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    localStorage.setItem(userStorageKey, JSON.stringify(chatSessions));
+  }, [chatSessions, userStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem('campus_pulse_active_session', activeSessionId);
+  }, [activeSessionId]);
+
+  const activeSession = chatSessions.find(s => s.id === activeSessionId) || chatSessions[0] || {
+    id: 'session-default',
+    title: 'Initial Welcoming Chat',
+    createdAt: '',
+    updatedAt: '',
+    messages: []
+  };
+
+  const chatMessages = activeSession.messages;
   const [chatLoading, setChatLoading] = useState(false);
   const chatHistoryRef = useRef<{ role: string; content: string }[]>([]);
+
+  const createNewSession = () => {
+    const newId = `session-${Date.now()}`;
+    const initialMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'mannmitra',
+      text: `Namaste! I'm MannMitra, your campus companion. How can I help you right now?`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      suggestions: ["I need help with stress relief", "Can we do a breathing exercise?", "I can't sleep", "Exam preparation tips"]
+    };
+    const newSession: ChatSession = {
+      id: newId,
+      title: 'New Conversation',
+      createdAt: new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      messages: [initialMsg]
+    };
+    setChatSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    showToast('Started new chat session', 'success');
+  };
+
+  const selectSession = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+  };
+
+  const deleteSession = (sessionId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setChatSessions(prev => {
+      const filtered = prev.filter(s => s.id !== sessionId);
+      if (filtered.length === 0) {
+        const fallbackId = `session-${Date.now()}`;
+        const newSess: ChatSession = {
+          id: fallbackId,
+          title: 'New Conversation',
+          createdAt: new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+          updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: [{
+            id: `msg-${Date.now()}`,
+            sender: 'mannmitra',
+            text: `Namaste! I'm MannMitra, your campus companion. How are you feeling today?`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            suggestions: ["I'm feeling overwhelmed", "Sleeping poorly", "Just want to talk"]
+          }]
+        };
+        setActiveSessionId(fallbackId);
+        return [newSess];
+      }
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(filtered[0].id);
+      }
+      return filtered;
+    });
+    showToast('Chat session deleted', 'info');
+  };
 
   // Initial Sync from Python Backend API
   useEffect(() => {
@@ -192,6 +318,43 @@ export function useDemoStore() {
   ): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
     const cleanEmail = email.trim().toLowerCase();
 
+    // Direct Supabase Cloud DB authentication if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (data) {
+          if (data.password !== password) {
+            return { success: false, error: 'Incorrect password. Please verify your password and try again.' };
+          }
+          if (data.role !== selectedRole) {
+            return {
+              success: false,
+              error: `This email is registered for the ${data.role.toUpperCase()} portal. Please select "${data.role.toUpperCase()}" to sign in.`
+            };
+          }
+          const userProfile: UserProfile = {
+            id: data.id,
+            name: data.name,
+            email: data.email,
+            role: data.role,
+            avatar: data.avatar,
+            title: data.title,
+            department: data.department,
+            studentId: data.student_id
+          };
+          loginUser(userProfile);
+          return { success: true, user: userProfile };
+        }
+      } catch (err) {
+        console.warn('Supabase direct auth query error, falling back:', err);
+      }
+    }
+
     // Try backend authentication first
     try {
       const res = await fetch(`${MANNMITRA_API}/api/auth/login`, {
@@ -240,6 +403,81 @@ export function useDemoStore() {
   ): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
     const cleanEmail = email.trim().toLowerCase();
 
+    // Direct Supabase Cloud DB registration if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const newUserId = `usr-${targetRole}-${Date.now()}`;
+        const newProfile: UserProfile = {
+          id: newUserId,
+          name: fullName,
+          email: cleanEmail,
+          role: targetRole,
+          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150`,
+          title: targetRole === 'counselor' ? 'Clinical Psychologist' : targetRole === 'admin' ? 'Campus Administrator' : 'Student',
+          department: targetRole === 'student' ? 'General Academics' : 'Student Welfare',
+          studentId: targetRole === 'student' ? `STU-${Math.floor(1000 + Math.random() * 9000)}` : undefined
+        };
+
+        const { error } = await supabase.from('users').insert([{
+          id: newProfile.id,
+          email: cleanEmail,
+          password: password,
+          name: fullName,
+          role: targetRole,
+          title: newProfile.title,
+          department: newProfile.department,
+          student_id: newProfile.studentId,
+          avatar: newProfile.avatar
+        }]);
+
+        if (!error) {
+          if (targetRole === 'student') {
+            const newStudentObj: Student = {
+              id: newProfile.id,
+              name: fullName,
+              avatar: newProfile.avatar,
+              department: newProfile.department || 'Computer Science & Engineering',
+              year: '1st Year',
+              studentId: newProfile.studentId || `STU-${Date.now()}`,
+              hasCheckinData: false,
+              priorityScore: 0,
+              priorityLevel: 'stable',
+              moodTrend: 'No Logs Yet',
+              lastActivity: 'Just registered',
+              counselorAssigned: 'Dr. Ananya Sharma',
+              primarySignals: ['Active Student Session', 'Registered Account'],
+              summaryNote: 'New registered student profile active.'
+            };
+            setStudents(prev => [newStudentObj, ...prev.filter(s => s.id !== newProfile.id)]);
+
+            supabase.from('students').insert([{
+              id: newProfile.id,
+              student_id: newProfile.studentId,
+              name: fullName,
+              department: 'Computer Science & Engineering',
+              year: '1st Year',
+              priority_score: 1.8,
+              priority_level: 'stable',
+              mood_trend: 'stable',
+              stress_score: 3,
+              sleep_hours: 7.5,
+              counselor_assigned: 'Dr. Ananya Sharma',
+              last_activity: 'Just now',
+              summary_note: 'New registered student profile active.'
+            }]).then(({ error: err2 }) => {
+              if (err2) console.warn('Supabase student insert notice:', err2);
+            });
+          }
+
+          loginUser(newProfile);
+          setUserDb(prev => [...prev, { ...newProfile, password }]);
+          return { success: true, user: newProfile };
+        }
+      } catch (err) {
+        console.warn('Supabase registration error, falling back:', err);
+      }
+    }
+
     // Try backend registration
     try {
       const res = await fetch(`${MANNMITRA_API}/api/auth/register`, {
@@ -280,6 +518,29 @@ export function useDemoStore() {
       studentId: targetRole === 'student' ? generatedStudentId : undefined
     };
 
+    if (targetRole === 'student') {
+      const newStudentObj: Student = {
+        id: newAccount.id,
+        name: generatedName,
+        avatar: newAccount.avatar,
+        department: newAccount.department || 'Computer Science & Engineering',
+        year: '1st Year',
+        studentId: generatedStudentId,
+        priorityScore: 1.8,
+        priorityLevel: 'stable',
+        moodTrend: 'stable',
+        stressScore: 3,
+        sleepHours: 7.5,
+        academicEngagement: 'normal',
+        attendanceRate: 95,
+        lastActivity: 'Just now',
+        counselorAssigned: 'Dr. Ananya Sharma',
+        primarySignals: ['Active Student Session', 'Registered Account'],
+        summaryNote: 'New registered student profile active.'
+      };
+      setStudents(prev => [newStudentObj, ...prev.filter(s => s.id !== newAccount.id)]);
+    }
+
     const updatedDb = [...userDb, newAccount];
     setUserDb(updatedDb);
     loginUser(newAccount);
@@ -296,6 +557,32 @@ export function useDemoStore() {
     const studentName = currentUser?.name || 'Student';
 
     showToast('Check-in Saved!', `Your daily mood (${data.mood}) & stress rating (${data.stress}/10) have been recorded.`, 'success');
+
+    // Also write to Supabase directly if connected
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const calcPriority = Number((Math.min(10, (data.stress * 0.7) + ((8 - Math.min(8, data.sleepHours)) * 0.5))).toFixed(1));
+        await supabase.from('checkins').insert([{
+          student_id: studentId,
+          student_name: studentName,
+          mood: data.mood,
+          stress: data.stress,
+          sleep: data.sleepHours,
+          notes: data.reflection || ''
+        }]);
+
+        await supabase.from('students').update({
+          stress_score: data.stress,
+          sleep_hours: data.sleepHours,
+          priority_score: calcPriority,
+          priority_level: calcPriority >= 7.5 ? 'urgent' : calcPriority >= 5.0 ? 'moderate' : 'stable',
+          mood_trend: data.stress >= 7 ? 'declining' : data.stress <= 4 ? 'improving' : 'stable',
+          last_activity: 'Just now'
+        }).or(`id.eq.${studentId},student_id.eq.${studentId}`);
+      } catch (err) {
+        console.warn('Supabase checkin insert notice:', err);
+      }
+    }
 
     try {
       const res = await fetch(`${MANNMITRA_API}/api/checkins`, {
@@ -344,6 +631,29 @@ export function useDemoStore() {
 
   function min(a: number, b: number) { return Math.min(a, b); }
 
+  const appendMessageToSession = (msg: ChatMessage) => {
+    setChatSessions(prevSessions => {
+      return prevSessions.map(sess => {
+        if (sess.id === activeSessionId) {
+          const updatedMessages = [...sess.messages, msg];
+          let updatedTitle = sess.title;
+          if (sess.title === 'New Conversation' || sess.title === 'Initial Welcoming Chat') {
+            if (msg.sender === 'user') {
+              updatedTitle = msg.text.length > 30 ? `${msg.text.slice(0, 30)}...` : msg.text;
+            }
+          }
+          return {
+            ...sess,
+            title: updatedTitle,
+            updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: updatedMessages
+          };
+        }
+        return sess;
+      });
+    });
+  };
+
   const addChatMessage = async (text: string) => {
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -352,7 +662,7 @@ export function useDemoStore() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setChatMessages(prev => [...prev, userMsg]);
+    appendMessageToSession(userMsg);
     setChatLoading(true);
 
     chatHistoryRef.current = [
@@ -366,7 +676,7 @@ export function useDemoStore() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          session_id: currentUser?.id ?? 'guest',
+          session_id: activeSessionId,
           history: chatHistoryRef.current.slice(0, -1)
         })
       });
@@ -404,7 +714,7 @@ export function useDemoStore() {
         isCrisis
       };
 
-      setChatMessages(prev => [...prev, replyMsg]);
+      appendMessageToSession(replyMsg);
     } catch (err) {
       console.warn('MannMitra API unreachable, using offline fallback:', err);
       const lower = text.toLowerCase();
@@ -419,13 +729,13 @@ export function useDemoStore() {
         suggestions = ["Show sleep hygiene tips", "Try 5-4-3-2-1 Grounding", "Log sleep hours in Check-in"];
       }
 
-      setChatMessages(prev => [...prev, {
+      appendMessageToSession({
         id: `msg-reply-${Date.now()}`,
         sender: 'mannmitra',
         text: replyText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         suggestions
-      }]);
+      });
     } finally {
       setChatLoading(false);
     }
@@ -464,24 +774,29 @@ export function useDemoStore() {
       await fetch(`${MANNMITRA_API}/api/interventions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, scheduledBy: currentUser?.name || 'Counselor' })
+        body: JSON.stringify({
+          student_id: data.studentId,
+          type: data.type,
+          notes: data.notes,
+          scheduled_by: data.scheduledBy,
+          status: 'Scheduled'
+        })
       });
     } catch (e) {
-      console.warn('Backend Intervention API offline:', e);
+      console.warn('Backend Interventions API offline:', e);
     }
   };
 
-  const updateFacultyRequestStatus = async (id: string, status: FacultyRequest['status']) => {
+  const updateFacultyRequestStatus = async (requestId: string, newStatus: 'pending' | 'completed') => {
     setFacultyRequests(prev =>
-      prev.map(r => (r.id === id ? { ...r, status } : r))
+      prev.map(r => (r.id === requestId ? { ...r, status: newStatus } : r))
     );
-    showToast('Status Updated', `Faculty observation request updated to ${status}.`, 'info');
 
     try {
-      await fetch(`${MANNMITRA_API}/api/faculty-requests`, {
-        method: 'POST',
+      await fetch(`${MANNMITRA_API}/api/faculty/requests/${requestId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status })
+        body: JSON.stringify({ status: newStatus })
       });
     } catch (e) {
       console.warn('Backend Faculty Requests API offline:', e);
@@ -504,6 +819,11 @@ export function useDemoStore() {
     timelineEvents,
     interventions,
     chatMessages,
+    chatSessions,
+    activeSessionId,
+    createNewSession,
+    selectSession,
+    deleteSession,
     chatLoading,
     toast,
     showToast,

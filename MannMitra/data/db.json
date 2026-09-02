@@ -30,9 +30,42 @@
       "avatar": "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150",
       "title": "Dean of Student Welfare",
       "department": "Executive Administration"
+    },
+    {
+      "id": "usr-1788146553673",
+      "name": "Diljeet",
+      "email": "2006singhdil@gmail.com",
+      "password": "123456789",
+      "role": "student",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=2006singhdil@gmail.com",
+      "title": "Student",
+      "department": "Computer Science & Engineering",
+      "studentId": "CS2026-1003"
     }
   ],
   "students": [
+    {
+      "id": "usr-1788146553673",
+      "name": "Diljeet",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=2006singhdil@gmail.com",
+      "department": "Computer Science & Engineering",
+      "year": "1st Year",
+      "studentId": "CS2026-1003",
+      "priorityScore": 1.8,
+      "priorityLevel": "stable",
+      "moodTrend": "improving",
+      "stressScore": 3,
+      "sleepHours": 7.8,
+      "academicEngagement": "normal",
+      "attendanceRate": 95,
+      "lastActivity": "Just now",
+      "counselorAssigned": "Dr. Ananya Sharma",
+      "primarySignals": [
+        "Active Student Session",
+        "Consistent Check-ins"
+      ],
+      "summaryNote": "Registered student account active in MannMitra system."
+    },
     {
       "id": "std-1",
       "name": "Aarohi Verma",
@@ -128,6 +161,16 @@
     }
   ],
   "checkins": [
+    {
+      "id": "chk-1788233353636",
+      "studentId": "STU-4800",
+      "studentName": "Diljeet Singh",
+      "mood": "okay",
+      "stress": 5.0,
+      "sleep": 5.0,
+      "notes": "",
+      "timestamp": "Today"
+    },
     {
       "id": "chk-1",
       "studentId": "CS2023-042",

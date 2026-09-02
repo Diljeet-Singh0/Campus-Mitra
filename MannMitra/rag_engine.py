@@ -205,13 +205,27 @@ class RAGEngine:
                 embedding_function=self._embed_fn,
             )
 
-            if self._collection.count() == 0:
+            # Count source docs to detect new files added since last index
+            doc_files = [f for f in os.listdir(self.docs_dir) if f.endswith(".txt")] if os.path.isdir(self.docs_dir) else []
+            existing_count = self._collection.count()
+
+            if existing_count == 0 or len(doc_files) != len(set(
+                m.get("source", "") for m in (self._collection.get(include=["metadatas"]).get("metadatas") or [])
+            )):
+                # New docs detected or empty collection — full re-index
+                if existing_count > 0:
+                    logger.info("Detected new docs in %s. Clearing and re-indexing...", self.docs_dir)
+                    self._client.delete_collection(COLLECTION_NAME)
+                    self._collection = self._client.get_or_create_collection(
+                        name=COLLECTION_NAME,
+                        embedding_function=self._embed_fn,
+                    )
                 self._index_documents()
             else:
                 logger.info(
                     "Collection '%s' already has %d documents; skipping re-index.",
                     COLLECTION_NAME,
-                    self._collection.count(),
+                    existing_count,
                 )
             self._chroma_ready = True
         except Exception as exc:  # noqa: BLE001

@@ -66,26 +66,23 @@ function AppContent() {
 
   // Resolve active student dynamically for logged in student user
   const activeStudent: Student = store.students.find(
-    s => s.name.toLowerCase() === store.currentUser?.name.toLowerCase() ||
-         s.id === store.currentUser?.studentId ||
-         s.studentId === store.currentUser?.studentId
+    s => s.id === store.currentUser?.id ||
+         s.studentId === store.currentUser?.studentId ||
+         (store.currentUser?.name && s.name.toLowerCase() === store.currentUser.name.toLowerCase())
   ) || {
-    id: store.currentUser?.studentId || `CS2026-ACTIVE`,
-    name: store.currentUser?.name || 'Aarohi Verma',
+    id: store.currentUser?.id || store.currentUser?.studentId || `CS2026-ACTIVE`,
+    name: store.currentUser?.name || 'Student User',
     avatar: store.currentUser?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=student',
     department: store.currentUser?.department || 'Computer Science & Engineering',
     year: '1st Year',
-    studentId: store.currentUser?.studentId || 'CS2026-901',
-    priorityScore: 2.1,
+    studentId: store.currentUser?.studentId || 'STU-NEW',
+    hasCheckinData: false,
+    priorityScore: 0,
     priorityLevel: 'stable',
-    moodTrend: 'improving',
-    stressScore: 3,
-    sleepHours: 7.8,
-    academicEngagement: 'normal',
-    attendanceRate: 95,
-    lastActivity: 'Just now',
+    moodTrend: 'No Logs Yet',
+    lastActivity: 'Just registered',
     counselorAssigned: 'Dr. Ananya Sharma',
-    primarySignals: ['Active Student Session', 'Consistent Check-ins'],
+    primarySignals: ['Active Student Session'],
     summaryNote: 'Active student user session.'
   };
 
@@ -194,7 +191,17 @@ function AppContent() {
               path="/student/mannmitra"
               element={
                 <ProtectedRoute allowedRole="student" currentUser={store.currentUser} userRole={store.role}>
-                  <MannMitraPage messages={store.chatMessages} onSendMessage={store.addChatMessage} chatLoading={store.chatLoading} />
+                  <MannMitraPage
+                    messages={store.chatMessages}
+                    onSendMessage={store.addChatMessage}
+                    chatLoading={store.chatLoading}
+                    userName={store.currentUser?.name}
+                    chatSessions={store.chatSessions}
+                    activeSessionId={store.activeSessionId}
+                    onCreateNewSession={store.createNewSession}
+                    onSelectSession={store.selectSession}
+                    onDeleteSession={store.deleteSession}
+                  />
                 </ProtectedRoute>
               }
             />

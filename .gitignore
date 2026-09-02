@@ -1,0 +1,39 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build and Temp outputs
+dist
+dist-ssr
+.vite/
+*.local
+
+# Node dependencies
+node_modules/
+
+# Environment secrets (MUST NOT BE COMMITTED)
+.env
+.env.*
+!.env.example
+MannMitra/.env
+
+# Python & Caching
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Databases & Vector DBs
+chroma_db/
+MannMitra/chroma_db/
+*.sqlite3
+
+# OS / Editor artifacts
+.DS_Store
+.vscode/
+.idea/
